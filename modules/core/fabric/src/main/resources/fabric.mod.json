@@ -18,6 +18,9 @@
   "entrypoints": {
     "main": [
       "com.kneelawk.glowvid.core.fabric.impl.FabricMod"
+    ],
+    "client": [
+      "com.kneelawk.glowvid.core.fabric.impl.FabricClientMod"
     ]
   },
   "mixins": [
