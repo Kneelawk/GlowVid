@@ -39,7 +39,7 @@ pluginManagement {
     }
 }
 
-rootProject.name = "templatemod"
+rootProject.name = "glowvid"
 
 fun module(enabled: Boolean, name: String) {
     if (!enabled) return

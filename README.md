@@ -1,3 +1,3 @@
-# Submodule Multi-Loader Template
+# GlowVid
 
-Simple Minecraft multi-loader mod template template using the Submodule plugin.
+Simple video player in Minecraft.
