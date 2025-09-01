@@ -3,7 +3,9 @@ package com.kneelawk.glowvid.core.impl.ffmpeg;
 import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
 import java.nio.file.Path;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
+import org.lwjgl.PointerBuffer;
 import org.lwjgl.system.Library;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.system.SharedLibrary;
@@ -15,6 +17,7 @@ import com.kneelawk.glowvid.core.impl.GVCConstants;
 import com.kneelawk.glowvid.core.impl.GVCLog;
 
 public class FFmpeg {
+    private static final ReentrantReadWriteLock LOCK = new ReentrantReadWriteLock();
     private static SharedLibrary avutil = null;
     private static int avutilVersion = -1;
     private static SharedLibrary avformat = null;
@@ -23,6 +26,7 @@ public class FFmpeg {
     private static int avcodecVersion = -1;
 
     private static final FFICIF versionCIF = FFIUtil.create(LibFFI.ffi_type_uint);
+    private static final FFICIF stringCIF = FFIUtil.create(LibFFI.ffi_type_pointer);
 
     private static int ffmpegMajor(int v) {
         return v >> 16;
@@ -37,49 +41,73 @@ public class FFmpeg {
     }
 
     public static boolean isLoaded() {
-        return avutil != null && avformat != null && avcodec != null;
+        LOCK.readLock().lock();
+        try {
+            return avutil != null && avformat != null && avcodec != null;
+        } finally {
+            LOCK.readLock().unlock();
+        }
     }
 
     public static void load(Path avutilPath, Path avformatPath, Path avcodecPath) {
-        if (avutil != null) {
-            GVCLog.LOG.info("[GlowVid] Unloading avutil {}.{}.{}", getAvutilVersionMajor(), getAvutilVersionMinor(),
-                getAvutilVersionPatch());
-            avutil.close();
-        }
-        if (avformat != null) {
-            GVCLog.LOG.info("[GlowVid] Unloading avformat {}.{}.{}", getAvformatVersionMajor(),
-                getAvformatVersionMinor(), getAvformatVersionPatch());
-            avformat.close();
-        }
-        if (avcodec != null) {
-            GVCLog.LOG.info("[GlowVid] Unloading avcodec {}.{}.{}", getAvcodecVersionMajor(), getAvcodecVersionMinor(),
-                getAvcodecVersionPatch());
-            avcodec.close();
-        }
+        LOCK.writeLock().lock();
+        try {
+            if (avutil != null) {
+                GVCLog.LOG.info("[GlowVid] Unloading avutil {}.{}.{}", getAvutilVersionMajor(), getAvutilVersionMinor(),
+                    getAvutilVersionPatch());
+                avutil.close();
+            }
+            if (avformat != null) {
+                GVCLog.LOG.info("[GlowVid] Unloading avformat {}.{}.{}", getAvformatVersionMajor(),
+                    getAvformatVersionMinor(), getAvformatVersionPatch());
+                avformat.close();
+            }
+            if (avcodec != null) {
+                GVCLog.LOG.info("[GlowVid] Unloading avcodec {}.{}.{}", getAvcodecVersionMajor(),
+                    getAvcodecVersionMinor(),
+                    getAvcodecVersionPatch());
+                avcodec.close();
+            }
 
-        avutil = Library.loadNative(GVCConstants.MODULE, avutilPath.toString());
-        avformat = Library.loadNative(GVCConstants.MODULE, avformatPath.toString());
-        avcodec = Library.loadNative(GVCConstants.MODULE, avcodecPath.toString());
+            avutil = Library.loadNative(GVCConstants.MODULE, avutilPath.toString());
+            avformat = Library.loadNative(GVCConstants.MODULE, avformatPath.toString());
+            avcodec = Library.loadNative(GVCConstants.MODULE, avcodecPath.toString());
 
-        avutilVersion = getVersion(avutil, "avutil_version");
-        avformatVersion = getVersion(avformat, "avformat_version");
-        avcodecVersion = getVersion(avcodec, "avcodec_version");
+            avutilVersion = getVersion(avutil, "avutil_version");
+            avformatVersion = getVersion(avformat, "avformat_version");
+            avcodecVersion = getVersion(avcodec, "avcodec_version");
 
-        GVCLog.LOG.info("[GlowVid] Loading avutil {}.{}.{}", getAvutilVersionMajor(), getAvutilVersionMinor(),
-            getAvutilVersionPatch());
-        GVCLog.LOG.info("[GlowVid] Loading avformat {}.{}.{}", getAvformatVersionMajor(), getAvformatVersionMinor(),
-            getAvformatVersionPatch());
-        GVCLog.LOG.info("[GlowVid] Loading avcodec {}.{}.{}", getAvcodecVersionMajor(), getAvcodecVersionMinor(),
-            getAvcodecVersionPatch());
+            GVCLog.LOG.info("[GlowVid] Loading avutil {}.{}.{} license: '{}', flags: {}", getAvutilVersionMajor(),
+                getAvutilVersionMinor(), getAvutilVersionPatch(), getString(avutil, "avutil_license"),
+                getString(avutil, "avutil_configuration"));
+            GVCLog.LOG.info("[GlowVid] Loading avformat {}.{}.{} license: '{}', flags: {}", getAvformatVersionMajor(),
+                getAvformatVersionMinor(), getAvformatVersionPatch(), getString(avformat, "avformat_license"),
+                getString(avformat, "avformat_configuration"));
+            GVCLog.LOG.info("[GlowVid] Loading avcodec {}.{}.{} license: '{}', flags: {}", getAvcodecVersionMajor(),
+                getAvcodecVersionMinor(), getAvcodecVersionPatch(), getString(avcodec, "avcodec_license"),
+                getString(avcodec, "avcodec_configuration"));
+        } finally {
+            LOCK.writeLock().unlock();
+        }
     }
 
     private static int getVersion(SharedLibrary lib, String func) {
         try (MemoryStack stack = MemoryStack.stackPush()) {
             ByteBuffer retBuf = stack.calloc(4);
             IntBuffer ret = retBuf.asIntBuffer();
-            long avutilVersionPtr = lib.getFunctionAddress(func);
-            LibFFI.ffi_call(versionCIF, avutilVersionPtr, retBuf, stack.callocPointer(0));
+            long versionPtr = lib.getFunctionAddress(func);
+            LibFFI.ffi_call(versionCIF, versionPtr, retBuf, stack.callocPointer(0));
             return ret.get(0);
+        }
+    }
+
+    private static String getString(SharedLibrary lib, String func) {
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            ByteBuffer retBuf = MemoryStack.stackCalloc(8);
+            PointerBuffer ret = PointerBuffer.create(retBuf);
+            long funcPtr = lib.getFunctionAddress(func);
+            LibFFI.ffi_call(stringCIF, funcPtr, retBuf, stack.callocPointer(0));
+            return ret.getStringASCII(0);
         }
     }
 
