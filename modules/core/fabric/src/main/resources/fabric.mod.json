@@ -16,6 +16,9 @@
   "icon": "${icon}",
   "environment": "*",
   "entrypoints": {
+    "main": [
+      "com.kneelawk.glowvid.core.fabric.impl.FabricMod"
+    ]
   },
   "mixins": [
   ],
@@ -27,7 +30,7 @@
   },
   "custom": {
     "modmenu": {
-      "badges": [ "library" ]
+      "badges": [ ]
     }
   }
 }
