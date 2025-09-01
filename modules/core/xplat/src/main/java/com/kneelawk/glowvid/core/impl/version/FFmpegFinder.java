@@ -2,8 +2,6 @@ package com.kneelawk.glowvid.core.impl.version;
 
 import java.io.BufferedReader;
 import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.nio.IntBuffer;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -13,62 +11,24 @@ import java.util.Iterator;
 import java.util.Set;
 import java.util.stream.Stream;
 
-import javax.annotation.Nullable;
-
-import org.lwjgl.system.Library;
-import org.lwjgl.system.MemoryStack;
-import org.lwjgl.system.SharedLibrary;
-import org.lwjgl.system.libffi.FFICIF;
-import org.lwjgl.system.libffi.LibFFI;
-
 import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
 
-import com.kneelawk.glowvid.core.impl.GVCConstants;
 import com.kneelawk.glowvid.core.impl.GVCLog;
 import com.kneelawk.glowvid.core.impl.GVOS;
+import com.kneelawk.glowvid.core.impl.ffmpeg.FFmpeg;
 
 public class FFmpegFinder {
-    public record FFmpegPaths(Path avutil, Path avformat, Path avcodec) {}
-
-    public static void init() {
-        FFmpegPaths systemFFmpeg = findSystemFFmpeg();
-
-        try (MemoryStack stack = MemoryStack.stackPush()) {
-            FFICIF cif = FFICIF.calloc(stack);
-            LibFFI.ffi_prep_cif(cif, LibFFI.FFI_DEFAULT_ABI, LibFFI.ffi_type_uint, stack.callocPointer(0));
-
-            printVersion(systemFFmpeg.avutil(), "avutil_version", "avutil", stack, cif);
-            printVersion(systemFFmpeg.avformat(), "avformat_version", "avformat", stack, cif);
-            printVersion(systemFFmpeg.avcodec(), "avcodec_version", "avcodec", stack, cif);
+    public static void install() {
+        FFmpegPaths paths = findSystemFFmpeg();
+        if (paths.isValid()) {
+            FFmpeg.load(paths.avutil(), paths.avformat(), paths.avcodec());
         }
     }
 
-    private static void printVersion(@Nullable Path lib, String versionFunc, String name, MemoryStack stack,
-                                     FFICIF cif) {
-        if (lib != null) {
-            try (SharedLibrary avutil = Library.loadNative(GVCConstants.MODULE, lib.toString())) {
-                ByteBuffer retBuf = stack.calloc(4);
-                IntBuffer ret = retBuf.asIntBuffer();
-                long avutilVersionPtr = avutil.getFunctionAddress(versionFunc);
-                LibFFI.ffi_call(cif, avutilVersionPtr, retBuf, stack.callocPointer(0));
-
-                int avutilVersion = ret.get(0);
-                GVCLog.LOG.info("[GlowVid] {} version: {}.{}.{}", name, ffmpegMajor(avutilVersion),
-                    ffmpegMinor(avutilVersion), ffmpegPatch(avutilVersion));
-            }
+    public record FFmpegPaths(Path avutil, Path avformat, Path avcodec) {
+        public boolean isValid() {
+            return avutil != null && avformat != null && avcodec != null;
         }
-    }
-
-    private static int ffmpegMajor(int v) {
-        return v >> 16;
-    }
-
-    private static int ffmpegMinor(int v) {
-        return (v & 0xFF00) >> 8;
-    }
-
-    private static int ffmpegPatch(int v) {
-        return v & 0xFF;
     }
 
     public static FFmpegPaths findSystemFFmpeg() {

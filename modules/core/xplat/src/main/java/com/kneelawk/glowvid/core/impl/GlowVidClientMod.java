@@ -6,7 +6,7 @@ public class GlowVidClientMod {
     public static void init() {
         GVCLog.LOG.info("Initializing GlowVid Core Client");
         GVOS.print();
-        FFmpegFinder.init();
+        FFmpegFinder.install();
         GVCLog.LOG.info("GlowVid Core Client initialized");
     }
 }
