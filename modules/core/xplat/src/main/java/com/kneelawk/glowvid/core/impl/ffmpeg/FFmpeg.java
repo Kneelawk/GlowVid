@@ -86,9 +86,16 @@ public class FFmpeg {
             GVCLog.LOG.info("[GlowVid] Loading avcodec {}.{}.{} license: '{}', flags: {}", getAvcodecVersionMajor(),
                 getAvcodecVersionMinor(), getAvcodecVersionPatch(), getString(avcodec, "avcodec_license"),
                 getString(avcodec, "avcodec_configuration"));
+
+            initPointers();
         } finally {
             LOCK.writeLock().unlock();
         }
+    }
+
+    private static void initPointers() {
+        avformat_alloc_context = avformat.getFunctionAddress("avformat_alloc_context");
+        avformat_free_context = avformat.getFunctionAddress("avformat_free_context");
     }
 
     private static int getVersion(SharedLibrary lib, String func) {
@@ -96,17 +103,17 @@ public class FFmpeg {
             ByteBuffer retBuf = stack.calloc(4);
             IntBuffer ret = retBuf.asIntBuffer();
             long versionPtr = lib.getFunctionAddress(func);
-            LibFFI.ffi_call(versionCIF, versionPtr, retBuf, stack.callocPointer(0));
+            LibFFI.ffi_call(versionCIF, versionPtr, retBuf, null);
             return ret.get(0);
         }
     }
 
     private static String getString(SharedLibrary lib, String func) {
         try (MemoryStack stack = MemoryStack.stackPush()) {
-            ByteBuffer retBuf = MemoryStack.stackCalloc(8);
+            ByteBuffer retBuf = stack.calloc(8);
             PointerBuffer ret = PointerBuffer.create(retBuf);
             long funcPtr = lib.getFunctionAddress(func);
-            LibFFI.ffi_call(stringCIF, funcPtr, retBuf, stack.callocPointer(0));
+            LibFFI.ffi_call(stringCIF, funcPtr, retBuf, null);
             return ret.getStringASCII(0);
         }
     }
@@ -145,5 +152,27 @@ public class FFmpeg {
 
     public static int getAvcodecVersionPatch() {
         return ffmpegPatch(avcodecVersion);
+    }
+
+    private static long avformat_alloc_context = -1;
+    private static final FFICIF avformat_alloc_context_CIF = FFIUtil.create(LibFFI.ffi_type_pointer);
+
+    public static AVFormatContext avformatAllocContext() {
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            ByteBuffer retBuf = stack.calloc(8);
+            PointerBuffer ret = PointerBuffer.create(retBuf);
+            LibFFI.ffi_call(avformat_alloc_context_CIF, avformat_alloc_context, retBuf, null);
+            return new AVFormatContext(ret.get(0));
+        }
+    }
+
+    private static long avformat_free_context = -1;
+    private static final FFICIF avformat_free_context_CIF =
+        FFIUtil.create(LibFFI.ffi_type_void, LibFFI.ffi_type_pointer);
+
+    public static void avformatFreeContext(AVFormatContext ctx) {
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            LibFFI.ffi_call(avformat_free_context_CIF, avformat_free_context, null, stack.pointers(ctx));
+        }
     }
 }
