@@ -5,9 +5,11 @@ import java.nio.IntBuffer;
 import java.nio.file.Path;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
+import org.jetbrains.annotations.Nullable;
 import org.lwjgl.PointerBuffer;
 import org.lwjgl.system.Library;
 import org.lwjgl.system.MemoryStack;
+import org.lwjgl.system.Pointer;
 import org.lwjgl.system.SharedLibrary;
 import org.lwjgl.system.libffi.FFICIF;
 import org.lwjgl.system.libffi.LibFFI;
@@ -16,14 +18,16 @@ import com.kneelawk.glowvid.core.impl.FFIUtil;
 import com.kneelawk.glowvid.core.impl.GVCConstants;
 import com.kneelawk.glowvid.core.impl.GVCLog;
 
+import static org.lwjgl.system.MemoryUtil.memAddressSafe;
+
 public class FFmpeg {
     private static final ReentrantReadWriteLock LOCK = new ReentrantReadWriteLock();
     private static SharedLibrary avutil = null;
-    private static int avutilVersion = -1;
+    private static int avutilVersion = 0;
     private static SharedLibrary avformat = null;
-    private static int avformatVersion = -1;
+    private static int avformatVersion = 0;
     private static SharedLibrary avcodec = null;
-    private static int avcodecVersion = -1;
+    private static int avcodecVersion = 0;
 
     private static final FFICIF versionCIF = FFIUtil.create(LibFFI.ffi_type_uint);
     private static final FFICIF stringCIF = FFIUtil.create(LibFFI.ffi_type_pointer);
@@ -94,8 +98,15 @@ public class FFmpeg {
     }
 
     private static void initPointers() {
-        avformat_alloc_context = avformat.getFunctionAddress("avformat_alloc_context");
-        avformat_free_context = avformat.getFunctionAddress("avformat_free_context");
+        avformat_alloc_context = mustGetFunction(avformat, "avformat_alloc_context");
+        avformat_free_context = mustGetFunction(avformat, "avformat_free_context");
+        avformat_open_input = mustGetFunction(avformat, "avformat_open_input");
+    }
+
+    private static long mustGetFunction(SharedLibrary lib, String name) {
+        long address = lib.getFunctionAddress(name);
+        if (address == 0) throw new UnsatisfiedLinkError("Shared library " + lib + " missing function '" + name + "'");
+        return address;
     }
 
     private static int getVersion(SharedLibrary lib, String func) {
@@ -154,7 +165,7 @@ public class FFmpeg {
         return ffmpegPatch(avcodecVersion);
     }
 
-    private static long avformat_alloc_context = -1;
+    private static long avformat_alloc_context = 0;
     private static final FFICIF avformat_alloc_context_CIF = FFIUtil.create(LibFFI.ffi_type_pointer);
 
     public static AVFormatContext avformatAllocContext() {
@@ -166,13 +177,30 @@ public class FFmpeg {
         }
     }
 
-    private static long avformat_free_context = -1;
+    private static long avformat_free_context = 0;
     private static final FFICIF avformat_free_context_CIF =
         FFIUtil.create(LibFFI.ffi_type_void, LibFFI.ffi_type_pointer);
 
     public static void avformatFreeContext(AVFormatContext ctx) {
         try (MemoryStack stack = MemoryStack.stackPush()) {
             LibFFI.ffi_call(avformat_free_context_CIF, avformat_free_context, null, stack.pointers(ctx));
+        }
+    }
+
+    private static long avformat_open_input = 0;
+    private static final FFICIF avformat_open_input_CIF =
+        FFIUtil.create(LibFFI.ffi_type_sint, LibFFI.ffi_type_pointer, LibFFI.ffi_type_pointer, LibFFI.ffi_type_pointer,
+            LibFFI.ffi_type_pointer);
+
+    public static int avformatOpenInput(PointerBuffer ps, CharSequence url, @Nullable Pointer fmt,
+                                        @Nullable PointerBuffer options) {
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            ByteBuffer retBuf = stack.calloc(4);
+            IntBuffer ret = retBuf.asIntBuffer();
+            LibFFI.ffi_call(avformat_open_input_CIF, avformat_open_input, retBuf,
+                stack.pointers(memAddressSafe(ps), memAddressSafe(stack.UTF8(url)), memAddressSafe(fmt),
+                    memAddressSafe(options)));
+            return ret.get(0);
         }
     }
 }
