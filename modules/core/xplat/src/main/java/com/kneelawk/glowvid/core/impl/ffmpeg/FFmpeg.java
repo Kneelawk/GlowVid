@@ -173,7 +173,7 @@ public class FFmpeg {
             ByteBuffer retBuf = stack.calloc(8);
             PointerBuffer ret = PointerBuffer.create(retBuf);
             LibFFI.ffi_call(avformat_alloc_context_CIF, avformat_alloc_context, retBuf, null);
-            return new AVFormatContext(ret.get(0));
+            return new AVFormatContext(ret.get(0), null);
         }
     }
 
@@ -183,7 +183,8 @@ public class FFmpeg {
 
     public static void avformatFreeContext(AVFormatContext ctx) {
         try (MemoryStack stack = MemoryStack.stackPush()) {
-            LibFFI.ffi_call(avformat_free_context_CIF, avformat_free_context, null, stack.pointers(ctx));
+            LibFFI.ffi_call(avformat_free_context_CIF, avformat_free_context, null,
+                stack.pointers(stack.pointers(ctx)));
         }
     }
 
@@ -198,8 +199,8 @@ public class FFmpeg {
             ByteBuffer retBuf = stack.calloc(4);
             IntBuffer ret = retBuf.asIntBuffer();
             LibFFI.ffi_call(avformat_open_input_CIF, avformat_open_input, retBuf,
-                stack.pointers(memAddressSafe(ps), memAddressSafe(stack.UTF8(url)), memAddressSafe(fmt),
-                    memAddressSafe(options)));
+                stack.pointers(stack.pointers(ps), stack.pointers(stack.UTF8(url)), stack.pointers(memAddressSafe(fmt)),
+                    stack.pointers(memAddressSafe(options))));
             return ret.get(0);
         }
     }

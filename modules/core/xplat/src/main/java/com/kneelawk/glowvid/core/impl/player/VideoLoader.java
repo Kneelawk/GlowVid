@@ -5,6 +5,7 @@ import java.util.concurrent.Semaphore;
 
 import org.lwjgl.system.MemoryStack;
 
+import com.kneelawk.glowvid.core.impl.GVCLog;
 import com.kneelawk.glowvid.core.impl.ffmpeg.AVFormatContext;
 import com.kneelawk.glowvid.core.impl.ffmpeg.FFmpeg;
 
@@ -26,12 +27,19 @@ public class VideoLoader implements Runnable {
 
     @Override
     public void run() {
+        GVCLog.LOG.info("[GlowVid] Loading '{}'...", source);
+
         AVFormatContext formatCtx = FFmpeg.avformatAllocContext();
         try (MemoryStack stack = MemoryStack.stackPush()) {
+            System.out.println("Opening Input...");
             if (FFmpeg.avformatOpenInput(stack.pointers(formatCtx), source, null, null) != 0) {
                 // On error, formatCtx gets freed by avformat_open_input, so we should not free it again
                 formatCtx = null;
             }
+            System.out.println("Printing stats...");
+
+            GVCLog.LOG.info("[GlowVid] Video format: {}, duration: {}", formatCtx.iformat().long_name(),
+                formatCtx.duration());
         } finally {
             if (formatCtx != null) {
                 formatCtx.close();
